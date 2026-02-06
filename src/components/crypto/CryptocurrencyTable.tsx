@@ -1,0 +1,248 @@
+'use client';
+
+import { useState, useMemo, useCallback } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import { 
+  ChevronUp, 
+  ChevronDown, 
+  Filter,
+  Settings
+} from 'lucide-react';
+import { useCryptoStore } from '@/store/cryptoStore';
+import { SortField } from '@/types/ui';
+import { WatchlistItem, Cryptocurrency } from '@/types/crypto';
+import CryptoTableRow from './CryptoTableRow';
+import WatchlistTable from './WatchlistTable';
+
+export default function CryptocurrencyTable() {
+  const {
+    getCurrentTabData,
+    sortConfig,
+    setSortConfig,
+    setSelectedToken,
+    addToWatchlist,
+    removeFromWatchlist,
+    isInWatchlist,
+    setModalState,
+    activeTab,
+    cryptocurrencies,
+    topGainers,
+    topLosers,
+    recentlyAdded,
+    watchlist,
+    searchQuery,
+    filterConfig,
+    setFilterConfig,
+  } = useCryptoStore();
+
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+
+  const data = useMemo(() => {
+    console.log('CryptocurrencyTable: Getting current tab data, activeTab:', activeTab, 'cryptocurrencies count:', cryptocurrencies.length);
+    console.log('CryptocurrencyTable: filterConfig:', filterConfig);
+    console.log('CryptocurrencyTable: cryptocurrencies data:', cryptocurrencies.slice(0, 3)); // Log first 3 items
+    const result = getCurrentTabData();
+    console.log('CryptocurrencyTable: getCurrentTabData returned:', result.length, 'items');
+    return result;
+  }, [getCurrentTabData, activeTab, cryptocurrencies.length, filterConfig]);
+
+  const handleSort = (field: SortField) => {
+    setSortConfig({
+      field,
+      direction: sortConfig.field === field && sortConfig.direction === 'asc' ? 'desc' : 'asc',
+    });
+  };
+
+  const handleTokenClick = useCallback((token: Cryptocurrency) => {
+    setSelectedToken(token);
+  }, [setSelectedToken]);
+
+  const handleWatchlistTokenClick = useCallback((watchlistItem: WatchlistItem) => {
+    // Find the full cryptocurrency data from the main list
+    const fullToken = cryptocurrencies.find(crypto => crypto.id === watchlistItem.id);
+    if (fullToken) {
+      setSelectedToken(fullToken);
+    }
+  }, [cryptocurrencies, setSelectedToken]);
+
+  const handleWatchlistToggle = useCallback((token: Cryptocurrency, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isInWatchlist(token.id)) {
+      removeFromWatchlist(token.id);
+    } else {
+      addToWatchlist(token);
+    }
+  }, [isInWatchlist, removeFromWatchlist, addToWatchlist]);
+
+  const handleHover = useCallback((id: string | null) => {
+    setHoveredRow(id);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    const defaultFilters = {
+      marketCapRange: { min: null, max: null },
+      priceChangeThreshold: { min: null, max: null },
+      volumeThreshold: { min: null },
+      marketCapFilters: {
+        largeCap: false,
+        midCap: false,
+        smallCap: false,
+      },
+      priceChangeFilters: {
+        gainers10: false,
+        gainers25: false,
+        gainers50: false,
+        losers10: false,
+        losers25: false,
+        losers50: false,
+      },
+      volumeFilters: {
+        highVolume: false,
+        mediumVolume: false,
+        lowVolume: false,
+      },
+    };
+    setFilterConfig(defaultFilters);
+  }, [setFilterConfig]);
+
+  // Check if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    const { marketCapFilters, priceChangeFilters, volumeFilters } = filterConfig;
+    return (
+      marketCapFilters?.largeCap || marketCapFilters?.midCap || marketCapFilters?.smallCap ||
+      priceChangeFilters?.gainers10 || priceChangeFilters?.gainers25 || priceChangeFilters?.gainers50 ||
+      priceChangeFilters?.losers10 || priceChangeFilters?.losers25 || priceChangeFilters?.losers50 ||
+      volumeFilters?.highVolume || volumeFilters?.mediumVolume || volumeFilters?.lowVolume
+    );
+  }, [filterConfig]);
+
+  const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <button
+      onClick={() => handleSort(field)}
+      className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors"
+    >
+      <span>{children}</span>
+      {sortConfig.field === field && (
+        sortConfig.direction === 'asc' ? (
+          <ChevronUp className="w-4 h-4" />
+        ) : (
+          <ChevronDown className="w-4 h-4" />
+        )
+      )}
+    </button>
+  );
+
+  // Use WatchlistTable for watchlist tab
+  if (activeTab === 'watchlist') {
+    return <WatchlistTable onTokenClick={handleWatchlistTokenClick} />;
+  }
+
+  return (
+    <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
+      {/* Table Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-800">
+        <div className="flex items-center space-x-3">
+          <h2 className="text-lg font-semibold text-white">Cryptocurrency Market</h2>
+          {hasActiveFilters && (
+            <span className="px-2 py-1 text-xs bg-blue-600 text-white rounded-full">
+              Filters Active
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setModalState({ isOpen: true, type: 'filters', data: null })}
+            className={`p-2 transition-colors ${
+              hasActiveFilters 
+                ? 'text-blue-400 hover:text-blue-300' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Filter className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => setModalState({ isOpen: true, type: 'settings', data: null })}
+            className="p-2 text-gray-400 hover:text-white transition-colors"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-800">
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">
+                <SortButton field="market_cap_rank">#</SortButton>
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">
+                <SortButton field="name">Coin</SortButton>
+              </th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-400">
+                <SortButton field="current_price">Price</SortButton>
+              </th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-400">
+                <SortButton field="price_change_percentage_1h_in_currency">1h</SortButton>
+              </th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-400">
+                <SortButton field="price_change_percentage_24h">24h</SortButton>
+              </th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-400">
+                <SortButton field="price_change_percentage_7d">7d</SortButton>
+              </th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-400">
+                <SortButton field="total_volume">24h Volume</SortButton>
+              </th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-400">
+                <SortButton field="market_cap">Market Cap</SortButton>
+              </th>
+              <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">
+                Last 7 Days
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <AnimatePresence>
+              {data.map((token, index) => (
+                <CryptoTableRow
+                  key={token.id}
+                  token={token}
+                  index={index}
+                  isHovered={hoveredRow === token.id}
+                  onHover={handleHover}
+                  onClick={handleTokenClick}
+                  onWatchlistToggle={handleWatchlistToggle}
+                  isInWatchlist={isInWatchlist}
+                />
+              ))}
+            </AnimatePresence>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Table Footer */}
+      <div className="flex items-center justify-between p-4 border-t border-gray-800">
+        <div className="flex items-center space-x-4">
+          <p className="text-sm text-gray-400">
+            Showing {data.length} cryptocurrencies
+          </p>
+          {hasActiveFilters && (
+            <button
+              onClick={handleClearFilters}
+              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+        <div className="flex items-center space-x-4">
+          <p className="text-sm text-gray-400">
+            Last updated: {new Date().toLocaleTimeString()}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
